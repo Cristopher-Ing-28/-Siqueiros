@@ -1,0 +1,925 @@
+classdef app1 < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        UIFigure                        matlab.ui.Figure
+        AyudaButton                     matlab.ui.control.Button
+        HistorialButton                 matlab.ui.control.Button
+        InicioButton                    matlab.ui.control.Button
+        Image_4                         matlab.ui.control.Image
+        Image_3                         matlab.ui.control.Image
+        Image_2                         matlab.ui.control.Image
+        EstadodelaimagenLabel           matlab.ui.control.Label
+        Image                           matlab.ui.control.Image
+        Panel                           matlab.ui.container.Panel
+        RehacerButton                   matlab.ui.control.Button
+        DeshacerButton                  matlab.ui.control.Button
+        Label_3                         matlab.ui.control.Label
+        ExportarButton                  matlab.ui.control.Button
+        ImportarButton                  matlab.ui.control.Button
+        Label_2                         matlab.ui.control.Label
+        Label                           matlab.ui.control.Label
+        Panel_2                         matlab.ui.container.Panel
+        HerramientasdeRestauracinLabel  matlab.ui.control.Label
+        AdicindeColorButton             matlab.ui.control.Button
+        DegradacinButton                matlab.ui.control.Button
+        ReconstruccinButton             matlab.ui.control.Button
+        ManchasButton                   matlab.ui.control.Button
+        ArrugasPlieguesButton           matlab.ui.control.Button
+        RayonesButton                   matlab.ui.control.Button
+        ImagenRestauradaLabel           matlab.ui.control.Label
+        OriginalLabel                   matlab.ui.control.Label
+        UIAxes_4                        matlab.ui.control.UIAxes
+        UIAxes_3                        matlab.ui.control.UIAxes
+        UIAxes                          matlab.ui.control.UIAxes
+        UIAxes_2                        matlab.ui.control.UIAxes
+    end
+
+    
+    properties (Access = private)
+        ImagenOriginal  % Almacena la imagen importada
+        ImagenProcesada % Almacena el resultado tras aplicar filtros/módulos
+
+        % --- Pilas para Deshacer y Rehacer ---
+        HistorialImagenes = {} % Celda para almacenar los estados de la imagen
+        IndiceHistorial = 0    % Posición actual en el historial
+    end
+    
+    methods (Access = private)
+           % Guarda el estado actual en el historial
+        function guardarEstado(app, nuevaImagen)
+            % Elimina estados de rehacer si nos encontramos en medio del historial
+            if app.IndiceHistorial < length(app.HistorialImagenes)
+                app.HistorialImagenes = app.HistorialImagenes(1:app.IndiceHistorial);
+            end
+            
+            % Agregar el nuevo estado y actualizar el índice
+            app.IndiceHistorial = app.IndiceHistorial + 1;
+            app.HistorialImagenes{app.IndiceHistorial} = nuevaImagen;
+            app.ImagenProcesada = nuevaImagen;
+        end
+        
+        % Actualiza los visores UIAxes_2 y UIAxes_4
+        function actualizarInterfazProcesada(app)
+            img = app.ImagenProcesada;
+            
+            % 1. Renderizar Imagen Procesada
+            imshow(img, 'Parent', app.UIAxes_2);
+            
+            % 2. Renderizar Histograma Restaurado en UIAxes_4
+            if size(img, 3) == 3
+                grisHist = rgb2gray(img);
+            else
+                grisHist = img;
+            end
+            
+            [counts, binLocations] = imhist(grisHist);
+            
+            cla(app.UIAxes_4);
+            bar(app.UIAxes_4, binLocations, counts, 'BarWidth', 1, 'FaceColor', [0 0.4470 0.7410], 'EdgeColor', 'none');
+            app.UIAxes_4.XLim = [0 255];
+            app.UIAxes_4.YLimMode = 'auto';
+            app.UIAxes_4.YColor = [0.9 0.9 0.9];
+            app.UIAxes_4.XColor = [0.9 0.9 0.9];
+            
+            % 3. Garantizar Histograma Original en UIAxes_3
+            if ~isempty(app.ImagenOriginal)
+                if size(app.ImagenOriginal, 3) == 3
+                    grisOrig = rgb2gray(app.ImagenOriginal);
+                else
+                    grisOrig = app.ImagenOriginal;
+                end
+                [countsOrig, binLocOrig] = imhist(grisOrig);
+                cla(app.UIAxes_3);
+                bar(app.UIAxes_3, binLocOrig, countsOrig, 'BarWidth', 1, 'FaceColor', [0 0.4470 0.7410], 'EdgeColor', 'none');
+                app.UIAxes_3.XLim = [0 255];
+                app.UIAxes_3.YLimMode = 'auto';
+                app.UIAxes_3.YColor = [0.9 0.9 0.9];
+                app.UIAxes_3.XColor = [0.9 0.9 0.9];
+            end
+        end
+    end
+    
+
+    % Callbacks that handle component events
+    methods (Access = private)
+
+        % Button pushed function: ImportarButton
+        function ImportarButtonPushed(app, event)
+            fileFilters = {
+                '*.png;*.jpg;*.jpeg;*.tif;*.tiff;*.bmp', 'Archivos de imagen (*.png, *.jpg, *.jpeg, *.tif, *.bmp)'; ...
+                '*.png',  'Imágenes PNG (*.png)'; ...
+                '*.jpg;*.jpeg', 'Imágenes JPEG (*.jpg, *.jpeg)'; ...
+                '*.tif;*.tiff', 'Imágenes TIFF (*.tif, *.tiff)'; ...
+                '*.bmp',  'Imágenes Bitmap (*.bmp)'; ...
+                '*.*',    'Todos los archivos (*.*)'};
+            [fileName, folderPath] = uigetfile(fileFilters, 'Seleccionar imagen antigua');
+            if isequal(fileName, 0) || isequal(folderPath, 0)
+                return; % El usuario canceló la selección
+            end
+            try
+                fullImagePath = fullfile(folderPath, fileName);
+                img = imread(fullImagePath);
+    
+                app.ImagenOriginal = img;
+                app.ImagenProcesada = img;
+    
+                % Resetear historial
+                app.HistorialImagenes = {img};
+                app.IndiceHistorial = 1;
+    
+                imshow(img, 'Parent', app.UIAxes);
+                
+                % Dibujar Histograma Original en UIAxes_3
+                if size(img, 3) == 3
+                    grisOrig = rgb2gray(img);
+                else
+                    grisOrig = img;
+                end
+                [countsOrig, binLocOrig] = imhist(grisOrig);
+                cla(app.UIAxes_3);
+                bar(app.UIAxes_3, binLocOrig, countsOrig, 'BarWidth', 1, 'FaceColor', [0 0.4470 0.7410], 'EdgeColor', 'none');
+                app.UIAxes_3.XLim = [0 255];
+                app.UIAxes_3.YLimMode = 'auto';
+                app.UIAxes_3.YColor = [0.9 0.9 0.9];
+                app.UIAxes_3.XColor = [0.9 0.9 0.9];
+    
+                % Actualizar visor del procesado con la misma imagen inicial
+                app.actualizarInterfazProcesada();
+    
+                app.EstadodelaimagenLabel.Text = sprintf('Estado: Importación exitosa (%s)', fileName);
+            catch ME
+                app.EstadodelaimagenLabel.Text = 'Estado: Fallo en la importación de la imagen.';
+            end
+        end
+
+        % Button pushed function: RayonesButton
+        function RayonesButtonPushed(app, event)
+            if isempty(app.ImagenProcesada)
+                uialert(app.UIFigure, 'Por favor, importe una imagen primero.', 'Falta Imagen');
+                return;
+            end
+            
+            app.EstadodelaimagenLabel.Text = 'Estado: Eliminando rayones...';
+            drawnow;
+            
+            % 1. Obtener imagen actual
+            img = app.ImagenProcesada;
+            
+            % Convertir a escala de grises para la máscara
+            if size(img, 3) == 3
+                grayImg = rgb2gray(img);
+            else
+                grayImg = img;
+            end
+            
+            % 2. Top-Hat morfológico con un elemento estructurante más amplio (para rayones gruesos)
+            se = strel('disk', 6); % Aumentado de 4 a 6
+            tophatImg = imtophat(grayImg, se);
+            
+            % Umbral adaptativo basado en la mediana y desviación estándar del Top-Hat
+            umbral = median(tophatImg(:)) + 1.8 * std(double(tophatImg(:)));
+            mascaraRayones = tophatImg > umbral;
+            
+            % Engrosar la máscara para cubrir bordes desgastados del rayón
+            mascaraRayones = imdilate(mascaraRayones, strel('disk', 2));
+            
+            % 3. Aplicar Inpainting (regionfill) sobre la máscara generada
+            if size(img, 3) == 3
+                imgRestaurada = img;
+                for c = 1:3
+                    imgRestaurada(:,:,c) = regionfill(img(:,:,c), mascaraRayones);
+                end
+            else
+                imgRestaurada = regionfill(img, mascaraRayones);
+            end
+            
+            % 4. Actualizar variable en proceso
+            app.ImagenProcesada = imgRestaurada;
+            
+            % 5. Mostrar imagen procesada
+            imshow(imgRestaurada, 'Parent', app.UIAxes_2); 
+            
+            % 6. Renderizar Histograma Restaurado en UIAxes_4
+            if size(imgRestaurada, 3) == 3
+                grisHist = rgb2gray(imgRestaurada);
+            else
+                grisHist = imgRestaurada;
+            end
+            
+            [counts, binLocations] = imhist(grisHist);
+            bar(app.UIAxes_4, binLocations, counts, 'BarWidth', 1, 'FaceColor', [0.8 0.8 0.8], 'EdgeColor', 'none');
+            app.UIAxes_4.XLim = [0 255];
+            app.UIAxes_4.YColor = [0.9 0.9 0.9];
+            app.UIAxes_4.XColor = [0.9 0.9 0.9];
+            
+            % 7. Renderizar Histograma Original en UIAxes_3 si aún está vacío
+            if size(app.ImagenOriginal, 3) == 3
+                grisOrig = rgb2gray(app.ImagenOriginal);
+            else
+                grisOrig = app.ImagenOriginal;
+            end
+            [countsOrig, binLocOrig] = imhist(grisOrig);
+            bar(app.UIAxes_3, binLocOrig, countsOrig, 'BarWidth', 1, 'FaceColor', [0.8 0.8 0.8], 'EdgeColor', 'none');
+            app.UIAxes_3.XLim = [0 255];
+            app.UIAxes_3.YColor = [0.9 0.9 0.9];
+            app.UIAxes_3.XColor = [0.9 0.9 0.9];
+
+            app.guardarEstado(imgRestaurada);
+            app.actualizarInterfazProcesada();
+            app.EstadodelaimagenLabel.Text = 'Estado: Rayones eliminados correctamente.';
+        end
+
+        % Button pushed function: ArrugasPlieguesButton
+        function ArrugasPlieguesButtonPushed(app, event)
+            if isempty(app.ImagenProcesada)
+                uialert(app.UIFigure, 'Por favor, importe una imagen primero.', 'Falta Imagen');
+                return;
+            end
+            
+            app.EstadodelaimagenLabel.Text = 'Estado: Atenuando arrugas y pliegues...';
+            drawnow;
+            
+            % 1. Obtener imagen actual en proceso
+            img = app.ImagenProcesada;
+            
+            % 2. Filtrado selectivo para arrugas/pliegues sin destruir detalles faciales
+            se = strel('disk', 2); 
+            
+            if size(img, 3) == 3
+                imgRestaurada = img;
+                for c = 1:3
+                    temp = imclose(img(:,:,c), se);
+                    imgRestaurada(:,:,c) = medfilt2(temp, [3 3]);
+                end
+            else
+                temp = imclose(img, se);
+                imgRestaurada = medfilt2(temp, [3 3]);
+            end
+            
+            % 3. Guardar para operaciones sucesivas
+            app.ImagenProcesada = imgRestaurada;
+            
+            % 4. Mostrar la imagen restaurada en UIAxes_2
+            imshow(imgRestaurada, 'Parent', app.UIAxes_2); 
+            
+            % 5. Dibujar Histograma Original en UIAxes_3 (~ en lugar de !)
+            if ~isempty(app.ImagenOriginal)
+                if size(app.ImagenOriginal, 3) == 3
+                    grisOrig = rgb2gray(app.ImagenOriginal);
+                else
+                    grisOrig = app.ImagenOriginal;
+                end
+                [countsOrig, binLocOrig] = imhist(grisOrig);
+                bar(app.UIAxes_3, binLocOrig, countsOrig, 'BarWidth', 1, 'FaceColor', [0.3 0.3 0.3], 'EdgeColor', 'none');
+                app.UIAxes_3.XLim = [0 255];
+                app.UIAxes_3.YColor = [0.2 0.2 0.2];
+                app.UIAxes_3.XColor = [0.2 0.2 0.2];
+            end
+            
+            % 6. Dibujar Histograma Restaurado en UIAxes_4
+            if size(imgRestaurada, 3) == 3
+                grisHist = rgb2gray(imgRestaurada);
+            else
+                grisHist = imgRestaurada;
+            end
+            
+            [counts, binLocations] = imhist(grisHist);
+            bar(app.UIAxes_4, binLocations, counts, 'BarWidth', 1, 'FaceColor', [0.3 0.3 0.3], 'EdgeColor', 'none');
+            app.UIAxes_4.XLim = [0 255];
+            app.UIAxes_4.YColor = [0.2 0.2 0.2];
+            app.UIAxes_4.XColor = [0.2 0.2 0.2];
+            
+            app.guardarEstado(imgRestaurada);
+            app.actualizarInterfazProcesada();
+            app.EstadodelaimagenLabel.Text = 'Estado: Arrugas y pliegues procesados.';
+        end
+
+        % Button pushed function: DegradacinButton
+        function DegradacinButtonPushed(app, event)
+
+           if isempty(app.ImagenOriginal) && isempty(app.ImagenProcesada)
+            uialert(app.UIFigure, 'Por favor, importe una imagen primero.', 'Falta Imagen');
+            return;
+           end
+        
+            app.EstadodelaimagenLabel.Text = 'Estado: Restaurando imagen degradada por el sol...';
+            drawnow;
+        
+            try
+                if ~isempty(app.ImagenProcesada)
+                    imgBase = app.ImagenProcesada;
+                else
+                    imgBase = app.ImagenOriginal;
+                end
+        
+                % 1. Restauración HSV / CLAHE
+                if size(imgBase, 3) == 3
+                    hsvImg = rgb2hsv(imgBase);
+                    hsvImg(:,:,2) = min(hsvImg(:,:,2) * 1.3, 1.0); 
+                    hsvImg(:,:,3) = adapthisteq(hsvImg(:,:,3), 'ClipLimit', 0.02);
+                    imgRestaurada = hsv2rgb(hsvImg);
+                else
+                    imgRestaurada = adapthisteq(imgBase, 'ClipLimit', 0.02);
+                end
+        
+                % Filtro gaussiano suave
+                imgRestaurada = imgaussfilt(imgRestaurada, 0.6);
+                imgRestaurada = im2uint8(imgRestaurada);
+        
+                % 2. Actualizar propiedad en App Designer
+                app.ImagenProcesada = imgRestaurada;
+        
+                % 3. Mostrar la imagen procesada
+                imshow(imgRestaurada, 'Parent', app.UIAxes_2); 
+        
+                % 4. Renderizar Histograma Restaurado en UIAxes_4
+                if size(imgRestaurada, 3) == 3
+                    grisHist = rgb2gray(imgRestaurada);
+                else
+                    grisHist = imgRestaurada;
+                end
+                
+                [counts, binLocations] = imhist(grisHist);
+                bar(app.UIAxes_4, binLocations, counts, 'BarWidth', 1, 'FaceColor', [0 0.4470 0.7410], 'EdgeColor', 'none');
+                app.UIAxes_4.XLim = [0 255];
+                app.UIAxes_4.YColor = [0.9 0.9 0.9];
+                app.UIAxes_4.XColor = [0.9 0.9 0.9];
+                
+                % 5. Renderizar Histograma Original en UIAxes_3 si aplica
+                if size(app.ImagenOriginal, 3) == 3
+                    grisOrig = rgb2gray(app.ImagenOriginal);
+                else
+                    grisOrig = app.ImagenOriginal;
+                end
+                [countsOrig, binLocOrig] = imhist(grisOrig);
+                bar(app.UIAxes_3, binLocOrig, countsOrig, 'BarWidth', 1, 'FaceColor', [0 0.4470 0.7410], 'EdgeColor', 'none');
+                app.UIAxes_3.XLim = [0 255];
+                app.UIAxes_3.YColor = [0.9 0.9 0.9];
+                app.UIAxes_3.XColor = [0.9 0.9 0.9];
+                
+                app.guardarEstado(imgRestaurada);
+                app.actualizarInterfazProcesada();
+                app.EstadodelaimagenLabel.Text = 'Estado: Restauración por degradación solar completada.';
+        
+            catch ME
+                app.EstadodelaimagenLabel.Text = 'Estado: Error al aplicar la restauración por degradación.';
+            end
+        end
+
+        % Button pushed function: DeshacerButton
+        function DeshacerButtonPushed(app, event)
+            if app.IndiceHistorial > 1
+                app.IndiceHistorial = app.IndiceHistorial - 1;
+                app.ImagenProcesada = app.HistorialImagenes{app.IndiceHistorial};
+
+                app.actualizarInterfazProcesada();
+
+                app.EstadodelaimagenLabel.Text = sprintf('Estado: Operación deshecha (%d/%d).', ...
+                    app.IndiceHistorial, length(app.HistorialImagenes));
+            else
+                uialert(app.UIFigure, 'No hay más operaciones para deshacer.', 'Historial Vacío');
+            end 
+        end
+
+        % Button pushed function: RehacerButton
+        function RehacerButtonPushed(app, event)
+
+                if app.IndiceHistorial < length(app.HistorialImagenes)
+                    % Avanzar un estado en el historial
+                    app.IndiceHistorial = app.IndiceHistorial + 1;
+                    app.ImagenProcesada = app.HistorialImagenes{app.IndiceHistorial};
+
+                    % Actualizar la imagen y el histograma UIAxes_4
+                    app.actualizarInterfazProcesada();
+
+                    app.EstadodelaimagenLabel.Text = sprintf('Estado: Operación rehecha (%d/%d).', ...
+                        app.IndiceHistorial, length(app.HistorialImagenes));
+                else
+                    uialert(app.UIFigure, 'No hay más operaciones para rehacer.', 'Fin del Historial');
+                end
+        end
+
+        % Button pushed function: ReconstruccinButton
+        function ReconstruccinButtonPushed(app, event)
+            if isempty(app.ImagenProcesada)
+                uialert(app.UIFigure, 'Por favor, importe una imagen primero.', 'Falta Imagen');
+                return;
+            end
+
+            app.EstadodelaimagenLabel.Text = 'Estado: Reconstruyendo roturas y esquinas (M4)...';
+            drawnow;
+
+            try
+                img = app.ImagenProcesada;
+
+                if size(img, 3) == 3
+                    grayImg = rgb2gray(img);
+                else
+                    grayImg = img;
+                end
+
+                % 1. Detección de fondo/papel faltante (zonas sobreexpuestas por escaneo > 225)
+                mascaraVacios = (grayImg > 225);
+
+                % 2. Limitar la reconstrucción de esquinas estrictamente al PERÍMETRO (25% exterior)
+                % Esto aísla el centro de la imagen y protege ojos, nariz y boca
+                [filas, columnas] = size(grayImg);
+                mascaraPerimetro = false(filas, columnas);
+                mF = round(filas * 0.25);
+                mC = round(columnas * 0.25);
+                mascaraPerimetro(1:mF, :) = true;
+                mascaraPerimetro(end-mF+1:end, :) = true;
+                mascaraPerimetro(:, 1:mC) = true;
+                mascaraPerimetro(:, end-mC+1:end) = true;
+
+                mascaraEsquinas = mascaraVacios & mascaraPerimetro;
+
+                % 3. Detección de grietas morfológicas usando solo Top-Hat con alto umbral
+                % Se remueve Bottom-Hat para evitar interpretar sombras oscuras del rostro como daños
+                topHat = imtophat(grayImg, strel('disk', 4));
+                umbralTopHat = median(topHat(:)) + 3.0 * std(double(topHat(:)));
+                mascaraGrietas = topHat > umbralTopHat;
+
+                % 4. Unir máscaras
+                mascaraRoturas = mascaraEsquinas | mascaraGrietas;
+
+                % 5. Limpieza y dilatación controlada
+                mascaraRoturas = bwareaopen(mascaraRoturas, 30);
+                mascaraRoturas = imdilate(mascaraRoturas, strel('disk', 3));
+
+                if ~any(mascaraRoturas(:))
+                    app.EstadodelaimagenLabel.Text = 'Estado: No se detectaron roturas en la imagen.';
+                    return;
+                end
+
+                % 6. Inpainting canal por canal
+                if size(img, 3) == 3
+                    imgRestaurada = img;
+                    for c = 1:3
+                        imgRestaurada(:,:,c) = regionfill(img(:,:,c), mascaraRoturas);
+                    end
+                else
+                    imgRestaurada = regionfill(img, mascaraRoturas);
+                end
+
+                app.guardarEstado(imgRestaurada);
+                app.actualizarInterfazProcesada();
+                app.EstadodelaimagenLabel.Text = 'Estado: Reconstrucción M4 completada exitosamente.';
+
+            catch ME
+                uialert(app.UIFigure, ME.message, 'Error en Reconstrucción M4');
+                app.EstadodelaimagenLabel.Text = 'Estado: Error al ejecutar el módulo M4.';
+            end
+        end
+
+        % Button pushed function: AdicindeColorButton
+        function AdicindeColorButtonPushed(app, event)
+            if isempty(app.ImagenProcesada)
+                uialert(app.UIFigure, 'Por favor, importe una imagen primero.', 'Falta Imagen');
+                return;
+            end
+
+            app.EstadodelaimagenLabel.Text = 'Estado: Colorizando por transferencia de luminancia L*a*b* (M6)...';
+            drawnow;
+
+            try
+                img = app.ImagenProcesada;
+
+                % 1. Extraer escala de grises / luminancia
+                if size(img, 3) == 3
+                    grayImg = rgb2gray(img);
+                else
+                    grayImg = img;
+                end
+
+                lum = im2double(grayImg);
+                L = lum * 100; % Escala L* de 0 a 100
+
+                % 2. Puntos de control para la curva de transferencia cromática (PDI determinista)
+                % L_puntos: Niveles de brillo (0=Negro absoluto, 100=Blanco puro)
+                % a_puntos: Verde (-) a Rojo (+)
+                % b_puntos: Azul (-) a Amarillo (+)
+                L_puntos = [0,  12,  30,  55,  75,  92, 100];
+                a_puntos = [1,   2,   7,  13,   9,   2,   0];
+                b_puntos = [2,   3,  10,  16,  11,   3,   1];
+
+                % 3. Interpolación suave continua (pchip) para cada píxel de la matriz
+                % Aplica el tono a TODAS las zonas según su brillo, sin máscaras circulares rígidas
+                a = interp1(L_puntos, a_puntos, L, 'pchip');
+                b = interp1(L_puntos, b_puntos, L, 'pchip');
+
+                % 4. Filtrado suave morfológico para homogeneizar la transición cromática
+                a = imgaussfilt(a, 1.5);
+                b = imgaussfilt(b, 1.5);
+
+                % 5. Reconstrucción de L*a*b* a RGB
+                imgLAB = cat(3, L, a, b);
+                imgRestaurada = lab2rgb(imgLAB);
+                imgRestaurada = im2uint8(imgRestaurada);
+
+                % 6. Actualizar historial e interfaz
+                app.guardarEstado(imgRestaurada);
+                app.actualizarInterfazProcesada();
+                app.EstadodelaimagenLabel.Text = 'Estado: Colorización M6 completada exitosamente.';
+
+            catch ME
+                uialert(app.UIFigure, ME.message, 'Error en Colorización M6');
+                app.EstadodelaimagenLabel.Text = 'Estado: Error al ejecutar la colorización M6.';
+            end
+        end
+
+        % Button pushed function: ManchasButton
+        function ManchasButtonPushed(app, event)
+if isempty(app.ImagenProcesada)
+        uialert(app.UIFigure, 'Por favor, importe una imagen primero.', 'Falta Imagen');
+        return;
+    end
+
+    app.EstadodelaimagenLabel.Text = 'Estado: Disminuyendo manchas (M3)...';
+    drawnow;
+
+    try
+        % --- Parámetros ajustables (calibrados para gotas en el lente) ---
+        kFuerte    = 3.0;    % sigmas para semillas (más bajo = más sensible)
+        kDebil     = 1.8;    % sigmas para extender la mancha (histéresis)
+        factorEsc  = 0.25;   % escala para estimar el fondo (rápido)
+        ventanaEsc = 25;     % impar; a escala 0.25 equivale a ~100 px reales
+        areaMin    = 30;     % px mínimos para considerar mancha
+        areaMaxFr  = 0.010;  % fracción máxima de la imagen por región
+        ratioMax   = 3;      % eje mayor/menor (mayor = línea/rayo, se protege)
+        solidezMin = 0.5;    % formas muy irregulares se protegen
+        radioDilat = 5;      % cubre el halo difuso de la gota
+        radioInp   = 15;     % radio de inpaintCoherent
+        mostrarMascara = false;  % true para depurar la máscara
+        % -----------------------------------------------------------------
+
+        % 0. Normalizar clase: elimina la dependencia de uint8 vs double
+        img = im2uint8(app.ImagenProcesada);
+        esGris = size(img, 3) == 1;
+        if esGris
+            img = repmat(img, 1, 1, 3);
+        end
+
+        % 1. Lab: luminancia + croma
+        lab = rgb2lab(img);
+        L = lab(:,:,1);  A = lab(:,:,2);  B = lab(:,:,3);
+
+        % 2. Fondo local robusto, estimado a escala reducida
+        fondo = @(X) imresize( ...
+                     medfilt2(imresize(X, factorEsc, 'bilinear'), ...
+                              [ventanaEsc ventanaEsc], 'symmetric'), ...
+                     [size(X,1), size(X,2)], 'bilinear');
+
+        bgL = fondo(L);  bgA = fondo(A);  bgB = fondo(B);
+
+        dL = L - bgL;
+        dC = hypot(A - bgA, B - bgB);
+
+        % 3. Puntaje normalizado (MAD); solo oscurecimientos en luminancia
+        sL = max(1.4826 * median(abs(dL(:) - median(dL(:)))), 1);
+        sC = max(1.4826 * median(dC(:)), 1);
+        puntaje = max(max(-dL, 0) / sL, dC / sC);
+
+        % 4. Histéresis: semillas fuertes extendidas a toda la mancha
+        mascara = imreconstruct(puntaje > kFuerte, puntaje > kDebil);
+
+        % 5. Filtrado por tamaño
+        mascara = bwareaopen(mascara, areaMin);
+        mascara = mascara & ~bwareaopen(mascara, round(areaMaxFr * numel(mascara)));
+
+        % 6. Filtrado por forma: proteger líneas, rayo, arcoíris y estructuras alargadas
+        cc = bwconncomp(mascara);
+        if cc.NumObjects > 0
+            st = regionprops(cc, 'Solidity', 'MajorAxisLength', 'MinorAxisLength');
+            ratio = [st.MajorAxisLength] ./ max([st.MinorAxisLength], 1);
+            conservar = ([st.Solidity] > solidezMin) & (ratio < ratioMax);
+            mascara = ismember(labelmatrix(cc), find(conservar));
+        end
+
+        % 7. Expandir para cubrir halos de la mancha
+        mascara = imdilate(mascara, strel('disk', radioDilat));
+
+        nManchas = bwconncomp(mascara).NumObjects;
+        if nManchas == 0
+            app.EstadodelaimagenLabel.Text = ...
+                'Estado: No se detectaron manchas (prueba bajar kFuerte).';
+            return;
+        end
+
+        % Depuración visual opcional
+        if mostrarMascara
+            figure; imshow(labeloverlay(img, mascara, 'Transparency', 0.5));
+        end
+
+        % 8. Reparación
+        try
+            imgRestaurada = inpaintCoherent(img, mascara, ...
+                'Radius', radioInp, 'SmoothingFactor', 2);   % Requiere R2019a+ o Computer Vision Toolbox
+        catch
+            imgRestaurada = img;
+            for c = 1:3
+                imgRestaurada(:,:,c) = regionfill(img(:,:,c), mascara);
+            end
+        end
+
+        if esGris
+            imgRestaurada = imgRestaurada(:,:,1);
+        end
+
+        % 9. Guardar y actualizar interfaz
+        app.guardarEstado(imgRestaurada);
+        app.actualizarInterfazProcesada();
+        app.EstadodelaimagenLabel.Text = sprintf( ...
+            'Estado: %d manchas reparadas (%.2f%% de la imagen).', ...
+            nManchas, 100 * nnz(mascara) / numel(mascara));
+
+    catch ME
+        uialert(app.UIFigure, ME.message, 'Error en Módulo 3');
+        app.EstadodelaimagenLabel.Text = 'Estado: Error al aplicar la disminución de manchas.';
+    end
+        end
+    end
+
+    % Component initialization
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Get the file path for locating images
+            pathToMLAPP = fileparts(mfilename('fullpath'));
+
+            % Create UIFigure and hide until all components are created
+            app.UIFigure = uifigure('Visible', 'off');
+            app.UIFigure.Color = [0.0588 0.251 0.4];
+            app.UIFigure.Position = [100 1 1090 851];
+            app.UIFigure.Name = 'MATLAB App';
+
+            % Create Panel
+            app.Panel = uipanel(app.UIFigure);
+            app.Panel.BorderColor = [0.851 0.7804 0.6588];
+            app.Panel.HighlightColor = [0.851 0.7804 0.6588];
+            app.Panel.BackgroundColor = [0.949 0.9098 0.851];
+            app.Panel.Position = [181 45 897 790];
+
+            % Create UIAxes_2
+            app.UIAxes_2 = uiaxes(app.Panel);
+            app.UIAxes_2.XTick = [];
+            app.UIAxes_2.YTick = [];
+            app.UIAxes_2.Position = [480 335 387 321];
+
+            % Create UIAxes
+            app.UIAxes = uiaxes(app.Panel);
+            app.UIAxes.XTick = [];
+            app.UIAxes.YTick = [];
+            app.UIAxes.Position = [25 335 387 321];
+
+            % Create UIAxes_3
+            app.UIAxes_3 = uiaxes(app.Panel);
+            app.UIAxes_3.XTick = [];
+            app.UIAxes_3.YTick = [];
+            app.UIAxes_3.Color = [1 1 1];
+            app.UIAxes_3.Position = [26 161 387 158];
+
+            % Create UIAxes_4
+            app.UIAxes_4 = uiaxes(app.Panel);
+            app.UIAxes_4.XTick = [];
+            app.UIAxes_4.YTick = [];
+            app.UIAxes_4.Color = [1 1 1];
+            app.UIAxes_4.Position = [480 160 387 158];
+
+            % Create OriginalLabel
+            app.OriginalLabel = uilabel(app.Panel);
+            app.OriginalLabel.FontSize = 24;
+            app.OriginalLabel.FontWeight = 'bold';
+            app.OriginalLabel.FontColor = [0.2784 0.2196 0.1216];
+            app.OriginalLabel.Position = [44 663 96 32];
+            app.OriginalLabel.Text = 'Original';
+
+            % Create ImagenRestauradaLabel
+            app.ImagenRestauradaLabel = uilabel(app.Panel);
+            app.ImagenRestauradaLabel.FontSize = 24;
+            app.ImagenRestauradaLabel.FontWeight = 'bold';
+            app.ImagenRestauradaLabel.FontColor = [0.2784 0.2196 0.1216];
+            app.ImagenRestauradaLabel.Position = [502 663 228 32];
+            app.ImagenRestauradaLabel.Text = 'Imagen Restaurada';
+
+            % Create Panel_2
+            app.Panel_2 = uipanel(app.Panel);
+            app.Panel_2.ForegroundColor = [0.2784 0.2196 0.1216];
+            app.Panel_2.BackgroundColor = [0.949 0.9098 0.851];
+            app.Panel_2.FontSize = 14;
+            app.Panel_2.Position = [25 63 855 79];
+
+            % Create RayonesButton
+            app.RayonesButton = uibutton(app.Panel_2, 'push');
+            app.RayonesButton.ButtonPushedFcn = createCallbackFcn(app, @RayonesButtonPushed, true);
+            app.RayonesButton.BackgroundColor = [0.0588 0.251 0.4];
+            app.RayonesButton.FontWeight = 'bold';
+            app.RayonesButton.FontColor = [0.949 0.9098 0.851];
+            app.RayonesButton.Position = [19 16 100 23];
+            app.RayonesButton.Text = 'Rayones';
+
+            % Create ArrugasPlieguesButton
+            app.ArrugasPlieguesButton = uibutton(app.Panel_2, 'push');
+            app.ArrugasPlieguesButton.ButtonPushedFcn = createCallbackFcn(app, @ArrugasPlieguesButtonPushed, true);
+            app.ArrugasPlieguesButton.BackgroundColor = [0.0588 0.251 0.4];
+            app.ArrugasPlieguesButton.FontWeight = 'bold';
+            app.ArrugasPlieguesButton.FontColor = [0.949 0.9098 0.851];
+            app.ArrugasPlieguesButton.Position = [150 16 120 23];
+            app.ArrugasPlieguesButton.Text = 'Arrugas / Pliegues';
+
+            % Create ManchasButton
+            app.ManchasButton = uibutton(app.Panel_2, 'push');
+            app.ManchasButton.ButtonPushedFcn = createCallbackFcn(app, @ManchasButtonPushed, true);
+            app.ManchasButton.BackgroundColor = [0.0588 0.251 0.4];
+            app.ManchasButton.FontWeight = 'bold';
+            app.ManchasButton.FontColor = [0.949 0.9098 0.851];
+            app.ManchasButton.Position = [301 16 100 23];
+            app.ManchasButton.Text = 'Manchas';
+
+            % Create ReconstruccinButton
+            app.ReconstruccinButton = uibutton(app.Panel_2, 'push');
+            app.ReconstruccinButton.ButtonPushedFcn = createCallbackFcn(app, @ReconstruccinButtonPushed, true);
+            app.ReconstruccinButton.BackgroundColor = [0.0588 0.251 0.4];
+            app.ReconstruccinButton.FontWeight = 'bold';
+            app.ReconstruccinButton.FontColor = [0.949 0.9098 0.851];
+            app.ReconstruccinButton.Position = [429 16 106 23];
+            app.ReconstruccinButton.Text = 'Reconstrucción';
+
+            % Create DegradacinButton
+            app.DegradacinButton = uibutton(app.Panel_2, 'push');
+            app.DegradacinButton.ButtonPushedFcn = createCallbackFcn(app, @DegradacinButtonPushed, true);
+            app.DegradacinButton.BackgroundColor = [0.0588 0.251 0.4];
+            app.DegradacinButton.FontWeight = 'bold';
+            app.DegradacinButton.FontColor = [0.949 0.9098 0.851];
+            app.DegradacinButton.Position = [573 16 100 23];
+            app.DegradacinButton.Text = 'Degradación';
+
+            % Create AdicindeColorButton
+            app.AdicindeColorButton = uibutton(app.Panel_2, 'push');
+            app.AdicindeColorButton.ButtonPushedFcn = createCallbackFcn(app, @AdicindeColorButtonPushed, true);
+            app.AdicindeColorButton.BackgroundColor = [0.0588 0.251 0.4];
+            app.AdicindeColorButton.FontWeight = 'bold';
+            app.AdicindeColorButton.FontColor = [0.949 0.9098 0.851];
+            app.AdicindeColorButton.Position = [716 16 111 23];
+            app.AdicindeColorButton.Text = 'Adición de Color';
+
+            % Create HerramientasdeRestauracinLabel
+            app.HerramientasdeRestauracinLabel = uilabel(app.Panel_2);
+            app.HerramientasdeRestauracinLabel.BackgroundColor = [0.0588 0.251 0.4];
+            app.HerramientasdeRestauracinLabel.FontSize = 14;
+            app.HerramientasdeRestauracinLabel.FontWeight = 'bold';
+            app.HerramientasdeRestauracinLabel.FontColor = [0.949 0.9098 0.851];
+            app.HerramientasdeRestauracinLabel.Position = [0 56 854 22];
+            app.HerramientasdeRestauracinLabel.Text = ' Herramientas de Restauración';
+
+            % Create Label
+            app.Label = uilabel(app.Panel);
+            app.Label.FontSize = 14;
+            app.Label.FontWeight = 'bold';
+            app.Label.FontColor = [0.2784 0.2196 0.1216];
+            app.Label.Position = [24 708 225 22];
+            app.Label.Text = 'Restaura hoy, conserva siempre ';
+
+            % Create Label_2
+            app.Label_2 = uilabel(app.Panel);
+            app.Label_2.FontSize = 36;
+            app.Label_2.FontWeight = 'bold';
+            app.Label_2.FontColor = [0.2784 0.2196 0.1216];
+            app.Label_2.Position = [24 729 99 47];
+            app.Label_2.Text = 'Inicio';
+
+            % Create ImportarButton
+            app.ImportarButton = uibutton(app.Panel, 'push');
+            app.ImportarButton.ButtonPushedFcn = createCallbackFcn(app, @ImportarButtonPushed, true);
+            app.ImportarButton.BackgroundColor = [0.0588 0.251 0.4];
+            app.ImportarButton.FontWeight = 'bold';
+            app.ImportarButton.FontColor = [0.949 0.9098 0.851];
+            app.ImportarButton.Tooltip = {'PNG, JPG/JPEG, TIFF y BMP'};
+            app.ImportarButton.Position = [25 23 192 23];
+            app.ImportarButton.Text = 'Importar';
+
+            % Create ExportarButton
+            app.ExportarButton = uibutton(app.Panel, 'push');
+            app.ExportarButton.BackgroundColor = [0.0588 0.251 0.4];
+            app.ExportarButton.FontWeight = 'bold';
+            app.ExportarButton.FontColor = [0.949 0.9098 0.851];
+            app.ExportarButton.Position = [687 23 192 23];
+            app.ExportarButton.Text = 'Exportar';
+
+            % Create Label_3
+            app.Label_3 = uilabel(app.Panel);
+            app.Label_3.FontSize = 14;
+            app.Label_3.FontWeight = 'bold';
+            app.Label_3.FontColor = [0.2784 0.2196 0.1216];
+            app.Label_3.Position = [44 314 82 22];
+            app.Label_3.Text = 'Histograma';
+
+            % Create DeshacerButton
+            app.DeshacerButton = uibutton(app.Panel, 'push');
+            app.DeshacerButton.ButtonPushedFcn = createCallbackFcn(app, @DeshacerButtonPushed, true);
+            app.DeshacerButton.BackgroundColor = [0.0588 0.251 0.4];
+            app.DeshacerButton.FontWeight = 'bold';
+            app.DeshacerButton.FontColor = [0.949 0.9098 0.851];
+            app.DeshacerButton.Tooltip = {'PNG, JPG/JPEG, TIFF y BMP'};
+            app.DeshacerButton.Position = [302 23 110 23];
+            app.DeshacerButton.Text = 'Deshacer';
+
+            % Create RehacerButton
+            app.RehacerButton = uibutton(app.Panel, 'push');
+            app.RehacerButton.ButtonPushedFcn = createCallbackFcn(app, @RehacerButtonPushed, true);
+            app.RehacerButton.BackgroundColor = [0.0588 0.251 0.4];
+            app.RehacerButton.FontWeight = 'bold';
+            app.RehacerButton.FontColor = [0.949 0.9098 0.851];
+            app.RehacerButton.Tooltip = {'PNG, JPG/JPEG, TIFF y BMP'};
+            app.RehacerButton.Position = [480 23 110 23];
+            app.RehacerButton.Text = 'Rehacer';
+
+            % Create Image
+            app.Image = uiimage(app.UIFigure);
+            app.Image.Position = [37 708 110 127];
+            app.Image.ImageSource = fullfile(pathToMLAPP, 'Recursos', 'logofondo.png');
+
+            % Create EstadodelaimagenLabel
+            app.EstadodelaimagenLabel = uilabel(app.UIFigure);
+            app.EstadodelaimagenLabel.FontColor = [0.949 0.9098 0.851];
+            app.EstadodelaimagenLabel.Position = [2 1 1089 45];
+            app.EstadodelaimagenLabel.Text = ' Estado de la imagen';
+
+            % Create Image_2
+            app.Image_2 = uiimage(app.UIFigure);
+            app.Image_2.Position = [10 647 49 54];
+            app.Image_2.ImageSource = fullfile(pathToMLAPP, 'Recursos', '2.png');
+
+            % Create Image_3
+            app.Image_3 = uiimage(app.UIFigure);
+            app.Image_3.Position = [10 532 49 54];
+            app.Image_3.ImageSource = fullfile(pathToMLAPP, 'Recursos', '4.png');
+
+            % Create Image_4
+            app.Image_4 = uiimage(app.UIFigure);
+            app.Image_4.Position = [10 413 49 54];
+            app.Image_4.ImageSource = fullfile(pathToMLAPP, 'Recursos', '3.png');
+
+            % Create InicioButton
+            app.InicioButton = uibutton(app.UIFigure, 'push');
+            app.InicioButton.HorizontalAlignment = 'left';
+            app.InicioButton.BackgroundColor = [0.949 0.9098 0.851];
+            app.InicioButton.FontSize = 18;
+            app.InicioButton.FontWeight = 'bold';
+            app.InicioButton.FontColor = [0.2784 0.2196 0.1216];
+            app.InicioButton.Position = [58 647 112 54];
+            app.InicioButton.Text = 'Inicio';
+
+            % Create HistorialButton
+            app.HistorialButton = uibutton(app.UIFigure, 'push');
+            app.HistorialButton.HorizontalAlignment = 'left';
+            app.HistorialButton.BackgroundColor = [0.949 0.9098 0.851];
+            app.HistorialButton.FontSize = 18;
+            app.HistorialButton.FontWeight = 'bold';
+            app.HistorialButton.FontColor = [0.2784 0.2196 0.1216];
+            app.HistorialButton.Position = [58 532 112 54];
+            app.HistorialButton.Text = 'Historial';
+
+            % Create AyudaButton
+            app.AyudaButton = uibutton(app.UIFigure, 'push');
+            app.AyudaButton.HorizontalAlignment = 'left';
+            app.AyudaButton.BackgroundColor = [0.949 0.9098 0.851];
+            app.AyudaButton.FontSize = 18;
+            app.AyudaButton.FontWeight = 'bold';
+            app.AyudaButton.FontColor = [0.2784 0.2196 0.1216];
+            app.AyudaButton.Position = [58 413 112 54];
+            app.AyudaButton.Text = 'Ayuda';
+
+            % Show the figure after all components are created
+            app.UIFigure.Visible = 'on';
+        end
+    end
+
+    % App creation and deletion
+    methods (Access = public)
+
+        % Construct app
+        function app = app1
+
+            % Create UIFigure and components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.UIFigure)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.UIFigure)
+        end
+    end
+end
